@@ -23,8 +23,10 @@ define(function (require, exports, module) {
      * @param {*} $el: DOM table element to attach the table 
      */
     constructor() {
-      this.$el = ""
-      this.table = ""
+      this.$el = ''
+      this.elementName = ''
+      this.idFilter = ''
+      this.table = ''
       $.fn.dataTable.ext.errMode = 'throw'
       // this.$el.DataTable({"retrieve": true}) 
     }
@@ -35,6 +37,8 @@ define(function (require, exports, module) {
      */
     element($el) {
       this.$el = $el
+      this.idFilter = `#${this.$el.attr('id')}_filter`
+      this.elementName = String($el)
     }
     /**
      * Build: generates and draws a datatable
@@ -44,14 +48,14 @@ define(function (require, exports, module) {
     build(urlArg, opt) {
       try {
         this.table = this.$el.DataTable({
-          "ordering": opt.ordering || true,
-          "retrieve": opt.retrieve || true,
-          "orderMulti": true,
-          "paging": true,
-          "processing": opt.processing || true,
-          "serverSide": opt.serverSide || true,
-          "pageLength": opt.pages || 10,
-          "ajax": {
+          'ordering': opt.ordering || true,
+          'retrieve': opt.retrieve || true,
+          'orderMulti': true,
+          'paging': true,
+          'processing': opt.processing || true,
+          'serverSide': opt.serverSide || true,
+          'pageLength': opt.pages || 10,
+          'ajax': {
             url: ApiService.getWellFormedUri(urlArg),
             type: opt.method || 'get',
             dataFilter: (data) => {
@@ -61,38 +65,114 @@ define(function (require, exports, module) {
               json.data = json.data.items
               return JSON.stringify(json) // return JSON string
             },
+            data: {
+              filters: opt.filters || {},
+              search: opt.search || {}
+            }
           },
-          // "bFilter": opt.filterVisible || false,
-          // 'sDom': '<"top"i>rt<"bottom"flp><"clear">',
-          "columns": opt.columns,
-          "error": (xhr,error,thrown) => {
+          'dom': opt.dom || '<"top">rt<"bottom"ip>',
+          'columns': opt.columns,
+          'error': (xhr, error, thrown) => {
             return Promise.reject(error)
           }
         })
-        this.table.draw()
+        // this.table.draw()
       } catch (err) {
         return Promise.reject(err)
       }
     }
 
-    search($el) {
+    draw() {
+      this.table.draw()
+    }
+
+
+    /**
+    * Sets DataTables native filter position, width and deletes label
+    * @param {String} placeholder Text to show inside the input
+    * @param {String} width The width of the element
+    * @param {String} position Position [left/right]
+    */
+    setFilterInputMaxWidth(placeholder, width, position) {
+      const idElement = this.idFilter
+      const alignment = position || `inherit`
+      $(`${idElement} > label > input`).each(function () {
+        $(this).insertBefore($(this).parent());
+      })
+      $(`${idElement}`).css('width', '100%')
+      $(`${idElement} > input`).css('width', `${width}%`)
+      $(`${idElement} > input`).css('float', `${alignment}`)
+      $(`${idElement} > input`).attr('placeholder', placeholder)
+      $(`${idElement} > label`).text('')
+    }
+
+
+    /**
+     * Performs a search and filter by column from a dropdown
+     * @param {jQuery} $el 
+     * @param {Number} idColumn the column to filter
+     */
+    dropdownSearch($el, idColumn) {
       try {
-        this.table.columns().every(function () {
-          const that = this;
-          $el.on('keyup change', function () {
-            if (that.search() !== this.value) {
-              that
-                .search(this.value)
-            }
+        const self = this
+        if (idColumn && typeof idColumn === 'number' && idColumn > 0) {
+          $el.on('change', function () {
+            const currentOption = this
+            self.table.columns().every(function () {
+              const column = this
+              if (idColumn === column['0']['0']) {
+                if (column.search() !== currentOption.value) {
+                  column.search(currentOption.value)
+                  self.draw()
+                }
+              }
+            })
           })
-        })
+        } else {
+          $el.on('change', function () {
+            self.table.search(this.value)
+            self.draw()
+          })
+        }
       } catch (err) {
         return Promise.reject(err)
       }
     }
 
     /**
+     * Generates a random ID
+     * @returns {String} The generated ID
+     */
+    makeId() {
+      let text = ''
+      const possible = 'abcdefghijklmnopqrstuvwxyz'
+      for (let i = 0; i < 5; i++)
+        text += possible.charAt(Math.floor(Math.random() * possible.length))
+      return text
+    }
+
+    /**
+     * Generates a dropdown that filters by column
+     * @param {Array} options Array of options
+     * @param {Number} column Column to filter
+     * @param {Number} width Width that the element will have
+     * @param {String} position Position that the element will have. Default:inherit. Values [left/right]
+     */
+    generateDropdownFilter(options, width, position, column) {
+      let opts = ''
+      const randomId = this.makeId()
+      const alignment = position || `right`
+      for (let option of options)
+        opts += `<option value="${option}">${option}</option>`
+      const dropDown = `<select style="float:${alignment}; width:${width}%;" class="wz-margin-left-5" id=${randomId}>${opts}</select>`
+      $(this.idFilter).prepend(dropDown)
+      this.dropdownSearch($(`#${randomId}`),column)
+      return
+    }
+
+    /**
      * Click: perform a click in a row
+     * @param {Function} callback
      */
     click(cb) {
       try {
@@ -104,7 +184,12 @@ define(function (require, exports, module) {
         return Promise.reject(err)
       }
     }
+
+
   }
+
+
+
 
   return table
 })
